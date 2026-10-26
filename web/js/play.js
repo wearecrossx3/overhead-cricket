@@ -835,7 +835,7 @@ const Play = {
 
   // ---------- Draw ----------
   draw() {
-    if (S3.ok) return this.draw3D();
+    return this.drawPersp();
     R.time = this.t;
     R.begin();
     R.drawGround(this.m);
@@ -878,14 +878,14 @@ const Play = {
     FX.draw();
     this.drawPopups();
   },
-  draw3D() {
-    S3.frame(this, Math.min(.05, this._dt || 1 / 60));
-    const g = R.ctx; g.setTransform(R.dpr, 0, 0, R.dpr, 0, 0); g.clearRect(0, 0, R.W, R.H);
+  drawPersp() {
+    PR.draw(this, Math.min(.05, this._dt || 1 / 60));
+    const g = R.ctx; g.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
     // timing ring around the contact point (user batting)
     const d = this.del;
     if (d && d.atHit && this.phase === 'flight' && this.userBatting() && !this.auto && !this.shot) {
       const left = d.tArrive - d.t, win = .11 * this.diff().win * .92 * .9;
-      const P = S3.project(d.atHit.x, HIT_Y, Math.max(.3, Math.min(1.2, d.atHit.z)));
+      const P = PR.proj(d.atHit.x, HIT_Y, Math.max(.3, Math.min(1.2, d.atHit.z)));
       const prog = U.clamp(left / Math.max(.3, d.tArrive * .8), 0, 1);
       const perfect = Math.abs(left) < win * .45, good = Math.abs(left) < win;
       const r = 16 + prog * 120;

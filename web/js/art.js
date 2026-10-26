@@ -92,10 +92,10 @@ Object.assign(R, {
   skinShade(c, a) { return shade(c, a); },
   limb2(ax, ay, bx, by, cx, cy, w1, w2, col) { this.limb(ax, ay, bx, by, w1, col); this.limb(bx, by, cx, cy, w2, col); },
   isoPerson(p) {
-    const g = this.ctx, k = this.cam.z * this.ISO.zh * 1.55;
+    const g = this.ctx, k = (this.figScale ? this.figScale(p.x, p.y) : this.cam.z * this.ISO.zh) * 1.12;
     if (k < 2.2) return this.isoDot(p, k);
     const P = this.proj(p.x, p.y, 0);
-    const fw = this.screenDir(Math.sin(p.face || 0), -Math.cos(p.face || 0));
+    const fw = this.screenDir(Math.sin(p.face || 0), -Math.cos(p.face || 0), [p.x, p.y]);
     const side = fw.x >= 0 ? 1 : -1, toCam = fw.y > -.2;
     const t = p.t || 0, kit = p.kit, skin = p.skin || '#c48a5c', pose = p.pose || 'stand';
     const bob = (pose === 'stand' || pose === 'bat' || pose === 'crouch' || pose === 'keep') ? Math.sin(t * 3 + (p.x || 0)) * .012 * k : 0;
@@ -103,7 +103,7 @@ Object.assign(R, {
     const stride = pose === 'run' ? Math.sin(t * 15) : pose === 'bowl' ? Math.sin(t * 10) * .7 : 0;
     g.save(); g.translate(P.x, P.y + bob);
     if (pose === 'dive') { g.translate(0, -.25 * k); g.rotate(side * 1.3); }
-    const hipY = -.74 * k * crouch, shY = hipY - .5 * k, headY = shY - .3 * k;
+    const hipY = -.88 * k * crouch, shY = hipY - .52 * k, headY = shY - .25 * k;
     const lean = ((pose === 'run' ? .14 : pose === 'keep' ? .1 : pose === 'crouch' || pose === 'bat' ? .07 : 0) * side) * k;
     // ---- legs ----
     const legCol = p.pads ? '#f7f5ef' : kit.trouser, shoe = '#f4f4f0';
@@ -195,7 +195,7 @@ Object.assign(R, {
     const glove = p.gloves ? (p.role === 'keeper' ? '#f2f2ee' : '#fafaf6') : skin;
     [hL, hR].forEach(h => { g.fillStyle = glove; g.beginPath(); g.arc(h.x, h.y, (p.gloves ? .075 : .055) * k, 0, Math.PI * 2); g.fill(); });
     // ---- head ----
-    const hx0 = lean * 1.25 + side * .02 * k, hr = .2 * k;
+    const hx0 = lean * 1.25 + side * .02 * k, hr = .155 * k;
     g.fillStyle = shade(skin, -15); g.fillRect(hx0 - .05 * k, headY + .1 * k, .1 * k, .12 * k);
     g.fillStyle = skin; g.beginPath(); g.arc(hx0, headY, hr, 0, Math.PI * 2); g.fill();
     g.fillStyle = 'rgba(0,0,0,.08)'; g.beginPath(); g.arc(hx0 + .05 * k, headY + .03 * k, hr * .85, -.6, 1.6); g.fill();

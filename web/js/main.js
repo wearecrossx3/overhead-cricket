@@ -7,11 +7,12 @@ const Game = {
     Save.load();
     const v = Save.data.settings.view; if (!['bat', 'tv', 'drone'].includes(v)) { Save.data.settings.view = 'bat'; Save.save(); }
     R.init(document.getElementById('game'));
-    if (S3.init()) { // 3D on: route projections through the 3D camera
-      R.proj = (x, y, z) => S3.project(x, y, z);
-      R.vecToWorld = (dx, dy) => S3.vecToWorld(dx, dy);
-      R.unproject = (sx, sy) => S3.unproject(sx, sy);
-    }
+    // 2D perspective renderer (Stick-Cricket style) — no WebGL, so no black screens
+    R.proj = (x, y, z) => PR.proj(x, y, z);
+    R.vecToWorld = (dx, dy) => PR.vecToWorld(dx, dy);
+    R.unproject = (sx, sy) => PR.unproject(sx, sy);
+    R.screenDir = (wx, wy, at) => PR.screenDir(wx, wy, at);
+    R.figScale = (x, y) => PR.scaleAt(x, y);
     window.addEventListener('error', (e) => this.reportError(e.message || String(e)));
     this.bindInput();
     requestAnimationFrame((t) => this.loop(t));
@@ -30,8 +31,7 @@ const Game = {
     try {
       if (Play.active && !this.paused) { Play.update(dt); this.watchdog(dt); }
       if (Play.m) Play.draw();
-      else if (S3.ok) { S3.idle(dt); const g = R.ctx; g.setTransform(R.dpr, 0, 0, R.dpr, 0, 0); g.clearRect(0, 0, R.W, R.H); }
-      else { R.begin(); R.drawGround(null); R.end(); }
+      else PR.draw(null, dt);
     } catch (e) { this.reportError(e && e.message); this.rescue(); }
   },
   // if a ball ever gets stuck, move the match on
