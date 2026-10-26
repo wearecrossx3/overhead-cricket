@@ -5,20 +5,52 @@ const Game = {
 
   init() {
     Save.load();
+    const v = Save.data.settings.view; if (!['bat', 'tv', 'drone'].includes(v)) { Save.data.settings.view = 'bat'; Save.save(); }
     R.init(document.getElementById('game'));
+    if (S3.init()) { // 3D on: route projections through the 3D camera
+      R.proj = (x, y, z) => S3.project(x, y, z);
+      R.vecToWorld = (dx, dy) => S3.vecToWorld(dx, dy);
+      R.unproject = (sx, sy) => S3.unproject(sx, sy);
+    }
+    window.addEventListener('error', (e) => this.reportError(e.message || String(e)));
     this.bindInput();
     requestAnimationFrame((t) => this.loop(t));
     UI.home();
     const sp = document.getElementById('splash'); if (sp) setTimeout(() => { sp.classList.add('out'); setTimeout(() => sp.remove(), 600); }, 1100);
     document.addEventListener('visibilitychange', () => { if (document.hidden && Play.active && !this.demoOn && !this.paused && Play.phase !== 'idle') UI.pauseMenu(); });
   },
-  loop(t) {
-    const dt = Math.min(.05, (t - (this.last || t)) / 1000); this.last = t;
-    if (Play.active && !this.paused) Play.update(dt);
-    if (Play.m) Play.draw(); else { R.begin(); R.drawGround(null); R.end(); }
-    requestAnimationFrame((tt) => this.loop(tt));
+  reportError(msg) {
+    console.error(msg);
+    const now = performance.now(); if (now - (this.lastErr || 0) < 4000) return; this.lastErr = now;
+    if (!this.demoOn) UI.toast('Recovered from a glitch: ' + String(msg).slice(0, 60), 2500);
   },
-
+  loop(t) {
+    requestAnimationFrame((tt) => this.loop(tt)); // schedule first: an error can never freeze the game
+    const dt = Math.min(.05, (t - (this.last || t)) / 1000); this.last = t;
+    try {
+      if (Play.active && !this.paused) { Play.update(dt); this.watchdog(dt); }
+      if (Play.m) Play.draw();
+      else if (S3.ok) { S3.idle(dt); const g = R.ctx; g.setTransform(R.dpr, 0, 0, R.dpr, 0, 0); g.clearRect(0, 0, R.W, R.H); }
+      else { R.begin(); R.drawGround(null); R.end(); }
+    } catch (e) { this.reportError(e && e.message); this.rescue(); }
+  },
+  // if a ball ever gets stuck, move the match on
+  watchdog(dt) {
+    const key = Play.phase + ':' + (Play.m ? Play.m.events.length : 0);
+    if (key !== this.wdKey) { this.wdKey = key; this.wdT = 0; return; }
+    if (['setup', 'choosebowler', 'idle'].includes(Play.phase)) return;
+    this.wdT += dt;
+    if (this.wdT > (Play.phase === 'inplay' ? 16 : 10)) { this.wdT = 0; this.rescue(); }
+  },
+  rescue() {
+    try {
+      if (!Play.active || this.demoOn && !Play.m) return;
+      if (Play.phase === 'inplay') Play.ballDead() || Play.endBall({ runs: Play.inplay ? Play.inplay.runs : 0 }, .4);
+      else if (Play.phase === 'flight' || Play.phase === 'runup') Play.endBall({}, .4);
+      else if (Play.phase === 'dead') Play.finishBall();
+      else if (Play.phase === 'between') Play.startBall();
+    } catch (e) { console.error('rescue failed', e); }
+  },
   // ---------- Attract-mode demo match behind the menus ----------
   demo() {
     if (this.demoOn) return;

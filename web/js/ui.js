@@ -6,8 +6,8 @@ const badge = (id, size) => { const t = teamById(id); return `<div class="badge"
 const coinsHTML = (n) => `<span class="coins"><i class="coin-i"></i>${U.fmtCoins(n)}</span>`;
 const roleName = { BAT: 'BAT', BOWL: 'BOWL', AR: 'ALL-RND', WK: 'KEEPER' };
 
-const VIEW_NAMES = { stick: 'Stick Cricket', iso: 'Isometric 3D', top: 'Top view' };
-const VIEW_ORDER = ['stick', 'iso', 'top'];
+const VIEW_NAMES = { bat: 'Behind batsman', tv: 'TV broadcast', drone: 'Drone' };
+const VIEW_ORDER = ['bat', 'tv', 'drone'];
 const UI = {
   bowlTarget: null, ctx: null,
 
@@ -282,7 +282,7 @@ const UI = {
     sh.innerHTML = `<div class="card"><h2 class="h2">Paused</h2>
       <button class="btn" data-a="res">Resume</button><div style="height:10px"></div>
       <button class="btn alt" data-a="sc">Scorecard</button><div style="height:10px"></div>
-      <div class="h3" style="margin-top:0">Camera angle</div><div class="row wrap" style="margin-bottom:12px">${VIEW_ORDER.map(k => `<button class="chip ${R.view() === k ? 'on' : ''}" data-v="${k}">${VIEW_NAMES[k]}</button>`).join('')}</div>
+      <div class="h3" style="margin-top:0">Camera angle</div><div class="row wrap" style="margin-bottom:12px">${VIEW_ORDER.map(k => `<button class="chip ${(Save.data.settings.view || 'bat') === k ? 'on' : ''}" data-v="${k}">${VIEW_NAMES[k]}</button>`).join('')}</div>
       <button class="btn alt" data-a="sim">Simulate rest of innings</button><div style="height:10px"></div>
       <button class="btn red" data-a="quit">Quit match</button></div>`;
     $hud().appendChild(sh);
@@ -393,7 +393,7 @@ const UI = {
       <div class="toggle" data-k="sound">Sound <div class="sw ${s.sound ? 'on' : ''}"></div></div>
       <div class="toggle" data-k="vibrate">Vibration <div class="sw ${s.vibrate ? 'on' : ''}"></div></div>
       <div class="toggle" data-k="autoRun">Auto running (RUN button still adds risky runs) <div class="sw ${s.autoRun ? 'on' : ''}"></div></div>
-      <div class="h3">Camera angle</div><div class="row wrap">${VIEW_ORDER.map(k => `<button class="chip ${R.view() === k ? 'on' : ''}" data-v="${k}">${VIEW_NAMES[k]}</button>`).join('')}</div>
+      <div class="h3">Camera angle</div><div class="row wrap">${VIEW_ORDER.map(k => `<button class="chip ${(Save.data.settings.view || 'bat') === k ? 'on' : ''}" data-v="${k}">${VIEW_NAMES[k]}</button>`).join('')}</div>
       <div class="h3">Difficulty</div><div class="row">${['easy', 'normal', 'hard'].map(d => `<button class="chip ${s.difficulty === d ? 'on' : ''}" data-d="${d}">${d}</button>`).join('')}</div>
       <div class="spacer"></div>
       <button class="btn red" data-a="reset">Reset all progress</button>`);

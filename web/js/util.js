@@ -25,7 +25,7 @@ const Save = {
   defaults() {
     return {
       coins: 500,
-      settings: { sound: true, vibrate: true, difficulty: 'normal', autoRun: true, view: 'stick' },
+      settings: { sound: true, vibrate: true, difficulty: 'normal', autoRun: true, view: 'bat' },
       stats: { matches: 0, wins: 0, runs: 0, sixes: 0, fours: 0, wickets: 0, highScore: 0 },
       career: null, // league/auction save
       tutorialSeen: false,

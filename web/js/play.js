@@ -277,6 +277,7 @@ const Play = {
   // ---------- Update ----------
   update(dt) {
     if (!this.active) return;
+    this._dt = dt;
     FX.update(dt); R.shake *= Math.pow(.02, dt); if (R.cheer > 0) R.cheer -= dt;
     if (this.sigT > 0 && (this.sigT -= dt) <= 0) this.umps[0].signal = null;
     if (this.slow) { this.slow.t -= dt; dt *= this.slow.f; if (this.slow.t <= 0) this.slow = null; }
@@ -834,6 +835,7 @@ const Play = {
 
   // ---------- Draw ----------
   draw() {
+    if (S3.ok) return this.draw3D();
     R.time = this.t;
     R.begin();
     R.drawGround(this.m);
@@ -873,6 +875,24 @@ const Play = {
       R.timingRing(d.atHit.x, HIT_Y, Math.min(1, d.atHit.z), U.clamp(left / Math.max(.3, d.tArrive * .8), 0, 1), Math.abs(left) < win * .45, Math.abs(left) < win);
     }
     R.end();
+    FX.draw();
+    this.drawPopups();
+  },
+  draw3D() {
+    S3.frame(this, Math.min(.05, this._dt || 1 / 60));
+    const g = R.ctx; g.setTransform(R.dpr, 0, 0, R.dpr, 0, 0); g.clearRect(0, 0, R.W, R.H);
+    // timing ring around the contact point (user batting)
+    const d = this.del;
+    if (d && d.atHit && this.phase === 'flight' && this.userBatting() && !this.auto && !this.shot) {
+      const left = d.tArrive - d.t, win = .11 * this.diff().win * .92 * .9;
+      const P = S3.project(d.atHit.x, HIT_Y, Math.max(.3, Math.min(1.2, d.atHit.z)));
+      const prog = U.clamp(left / Math.max(.3, d.tArrive * .8), 0, 1);
+      const perfect = Math.abs(left) < win * .45, good = Math.abs(left) < win;
+      const r = 16 + prog * 120;
+      g.lineWidth = 5; g.strokeStyle = perfect ? 'rgba(159,232,112,.95)' : good ? 'rgba(245,197,24,.95)' : 'rgba(255,255,255,.75)';
+      g.beginPath(); g.arc(P.x, P.y, r, 0, Math.PI * 2); g.stroke();
+      g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.arc(P.x, P.y, 16, 0, Math.PI * 2); g.stroke();
+    }
     FX.draw();
     this.drawPopups();
   },
