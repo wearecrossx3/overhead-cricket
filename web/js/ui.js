@@ -6,6 +6,8 @@ const badge = (id, size) => { const t = teamById(id); return `<div class="badge"
 const coinsHTML = (n) => `<span class="coins"><i class="coin-i"></i>${U.fmtCoins(n)}</span>`;
 const roleName = { BAT: 'BAT', BOWL: 'BOWL', AR: 'ALL-RND', WK: 'KEEPER' };
 
+const VIEW_NAMES = { stick: 'Stick Cricket', iso: 'Isometric 3D', top: 'Top view' };
+const VIEW_ORDER = ['stick', 'iso', 'top'];
 const UI = {
   bowlTarget: null, ctx: null,
 
@@ -23,14 +25,15 @@ const UI = {
     const career = s.career;
     const scr = this.show(`
       <div class="row" style="justify-content:space-between">${coinsHTML(s.coins)}<button class="btn small alt" data-a="settings">⚙</button></div>
-      <div style="margin-top:28px"><h1 class="title">Overhead<br>Cricket<small>TOP-VIEW T20</small></h1></div>
+      <div style="margin-top:22px"><h1 class="title">Overhead<br>Cricket<small>BY FRONTPAGE STUDIOS</small></h1></div>
       <div class="spacer"></div>
       <div class="menu-btns">
         <button class="btn" data-a="quick">Quick Match</button>
         <button class="btn alt" data-a="career">${career ? 'Continue Franchise League' : 'Franchise League + Auction'}</button>
-        <div class="row"><button class="btn alt small" style="flex:1" data-a="howto">How to play</button><button class="btn alt small" style="flex:1" data-a="stats">My stats</button></div>
+        <div class="row" style="margin-bottom:12px"><button class="btn alt" style="flex:1" data-a="ch">Challenges <span class="pill">${Challenges.totalStars()}★</span></button><button class="btn alt" style="flex:1" data-a="nets">Nets</button></div>
+        <div class="row"><button class="btn alt small" style="flex:1" data-a="shop">Bat Shop</button><button class="btn alt small" style="flex:1" data-a="ach">Trophies</button><button class="btn alt small" style="flex:1" data-a="howto">How to</button></div>
       </div>
-      <div class="muted" style="color:#cfd8e8;text-align:center;margin-top:6px">${st.matches} matches · ${st.wins} wins · ${st.sixes} sixes · Frontpage Studios</div>
+      <div class="muted" style="color:#cfd8e8;text-align:center;margin-top:6px">${st.matches} matches · ${st.wins} wins · ${st.sixes} sixes · <span data-a="stats" style="text-decoration:underline">stats</span></div>
     `, 'screen dim');
     this.bind(scr, {
       '[data-a=quick]': () => this.quickSetup(),
@@ -38,7 +41,88 @@ const UI = {
       '[data-a=settings]': () => this.settings(),
       '[data-a=howto]': () => this.howTo(),
       '[data-a=stats]': () => this.stats(),
+      '[data-a=ch]': () => this.challenges(),
+      '[data-a=nets]': () => { Game.stopDemo(); Game.nets(); },
+      '[data-a=shop]': () => this.shop(),
+      '[data-a=ach]': () => this.trophies(),
     });
+    if (Daily.available()) setTimeout(() => this.dailySheet(), 500);
+  },
+  dailySheet() {
+    if (!document.querySelector('.screen.dim') || document.querySelector('.sheet')) return;
+    const streak = Save.data.daily ? Save.data.daily.streak : 0;
+    const sh = U.el('div', 'sheet');
+    sh.innerHTML = `<div class="card" style="text-align:center"><div class="pill">DAILY REWARD</div><h2 class="h2" style="margin-top:12px">Welcome back!</h2>
+      <div class="row" style="justify-content:center;gap:6px;margin:10px 0">${[1, 2, 3, 4, 5, 6, 7].map(d => `<div class="ball-chip ${d <= streak ? 'b6' : ''}" style="min-width:34px;height:34px">${d}</div>`).join('')}</div>
+      <p class="muted">Come back every day — the streak bonus grows up to day 7.</p><button class="btn" data-a="claim">Claim coins</button></div>`;
+    $ui().appendChild(sh);
+    this.bind(sh, { '[data-a=claim]': () => { const r = Daily.claim(); Sfx.coin(); sh.remove(); this.toast(`+${r.amt} coins · day ${r.streak} streak`, 2000); this.home(); } });
+  },
+  comment(text) {
+    let el = document.getElementById('comm');
+    if (!el) { el = U.el('div', 'comm'); el.id = 'comm'; document.getElementById('app').appendChild(el); }
+    el.textContent = '🎙 ' + text; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+    clearTimeout(this._ct); this._ct = setTimeout(() => el.classList.remove('show'), 2600);
+  },
+
+  // ================= CHALLENGES =================
+  challenges() {
+    Game.stopDemo(); this.clearHud();
+    const all = Challenges.stars();
+    const scr = this.show(`<div class="row"><button class="btn small alt" data-a="back">←</button><h2 class="h2" style="margin:0">Challenges</h2><span class="spacer"></span><span class="pill">${Challenges.totalStars()} / ${CHALLENGES.length * 3} ★</span></div>
+      <p class="muted">Finish each scenario to unlock the next. 40 coins per new star.</p>
+      ${CHALLENGES.map((c, i) => { const st = all[i] || 0, open = Challenges.unlocked(i);
+        return `<button class="list-item ${open ? '' : 'dis'}" data-i="${i}"><div class="ovr" style="background:${c.kind === 'chase' ? 'var(--blue)' : 'var(--red)'};color:#fff">${i + 1}</div>
+        <div><b>${c.t}</b><div class="meta">${c.kind === 'chase' ? `Score ${c.need} off ${c.balls} ball${c.balls > 1 ? 's' : ''}` : `Defend ${c.need - 1} in ${c.balls} balls`} · ${c.wkts} wkt${c.wkts > 1 ? 's' : ''} · vs ${c.opp}</div>
+        <div class="meta">★★ ${c.s2t} · ★★★ ${Challenges.s3t(c)}</div></div>
+        <div class="r" style="font-size:18px;color:#e0a800;letter-spacing:-2px">${open ? '★'.repeat(st) + '<span style="color:#d6cfbd">' + '★'.repeat(3 - st) + '</span>' : '🔒'}</div></button>`; }).join('')}`);
+    this.bind(scr, {
+      '[data-a=back]': () => this.home(),
+      '[data-i]': (e, el) => { const i = +el.dataset.i; if (!Challenges.unlocked(i)) return this.toast('Earn a star on the previous challenge first'); Game.playChallenge(i); },
+    });
+  },
+  challengeResult(m, i, stars, coins) {
+    const ch = CHALLENGES[i], inn = m.innings[0];
+    Play.stop();
+    if (stars) Sfx.crowd(1.3);
+    const scr = this.show(`<div class="result-hero"><div class="pill">${stars ? 'CHALLENGE COMPLETE' : 'CHALLENGE FAILED'}</div>
+      <div class="big" style="margin-top:12px">${ch.t}</div>
+      <div style="font-size:54px;color:var(--yellow);letter-spacing:4px;margin-top:10px">${'★'.repeat(stars)}<span style="opacity:.25">${'★'.repeat(3 - stars)}</span></div>
+      <div style="font-weight:800;color:#cfd8e8">${inn.runs}/${inn.wkts} in ${inn.balls} ball${inn.balls === 1 ? '' : 's'} · target ${inn.target}</div></div>
+      <div class="spacer"></div>
+      <div class="card">${coins ? `<div class="reward"><span>New stars</span><span>+${coins} coins</span></div>` : ''}
+        <button class="btn" data-a="retry">Try again</button><div style="height:10px"></div>
+        ${stars && i + 1 < CHALLENGES.length ? '<button class="btn alt" data-a="next">Next challenge</button><div style="height:10px"></div>' : ''}
+        <button class="btn alt" data-a="list">All challenges</button></div>`, 'screen dim');
+    this.bind(scr, { '[data-a=retry]': () => Game.playChallenge(i), '[data-a=next]': () => Game.playChallenge(i + 1), '[data-a=list]': () => this.challenges() });
+  },
+
+  // ================= SHOP =================
+  shop() {
+    Game.stopDemo();
+    const st = SHOP.state();
+    const scr = this.show(`<div class="row" style="justify-content:space-between"><button class="btn small alt" data-a="back">←</button>${coinsHTML(Save.data.coins)}</div>
+      <h2 class="h2" style="margin-top:10px">Bat Shop</h2><p class="muted">Better bats hit harder and give you a bigger timing window.</p>
+      ${SHOP.bats.map(b => { const own = st.owned.includes(b.id), on = st.bat === b.id;
+        return `<button class="list-item ${on ? 'sel' : ''}" data-b="${b.id}"><div style="width:14px;height:56px;border-radius:5px;background:${b.color};box-shadow:inset -4px 0 0 rgba(0,0,0,.15)"></div>
+        <div><b>${b.name}</b><div class="meta">${b.desc}</div></div><div class="r">${on ? '<span class="pill">EQUIPPED</span>' : own ? '<b>Equip</b>' : coinsHTML(b.price)}</div></button>`; }).join('')}`);
+    this.bind(scr, {
+      '[data-a=back]': () => this.home(),
+      '[data-b]': (e, el) => {
+        const id = el.dataset.b, b = SHOP.bats.find(x => x.id === id);
+        if (st.owned.includes(id)) { SHOP.equip(id); return this.shop(); }
+        if (Save.data.coins < b.price) return this.toast('Not enough coins yet — win matches & challenges!');
+        if (SHOP.buy(id)) { Sfx.coin(); this.toast(`${b.name} bought!`); if (id === 'gold') Ach.unlock('gold'); this.shop(); }
+      },
+    });
+  },
+  trophies() {
+    Game.stopDemo();
+    const got = Ach.got();
+    const scr = this.show(`<div class="row"><button class="btn small alt" data-a="back">←</button><h2 class="h2" style="margin:0">Trophies</h2><span class="spacer"></span><span class="pill">${Object.keys(got).length}/${ACHIEVEMENTS.length}</span></div>
+      <div style="height:12px"></div>
+      ${ACHIEVEMENTS.map(a => `<div class="list-item ${got[a.id] ? '' : 'dis'}"><div class="ovr" style="background:${got[a.id] ? 'var(--yellow)' : '#cfc8b6'};color:var(--ink)">🏆</div><div><b>${a.t}</b><div class="meta">${a.d}</div></div><div class="r meta">+${a.c}</div></div>`).join('')}`);
+    this.bind(scr, { '[data-a=back]': () => this.home() });
   },
 
   // ================= QUICK MATCH SETUP =================
@@ -113,13 +197,13 @@ const UI = {
     const left = Rules.ballsLeft(inn);
     const req = inn.target != null
       ? `<span>Need <b>${Math.max(0, inn.target - inn.runs)}</b> off <b>${left}</b></span><span>RRR ${Rules.rrr(inn).toFixed(2)}</span>`
-      : `<span>CRR <b>${Rules.crr(inn).toFixed(2)}</b></span><span>${inn.superOver ? 'SUPER OVER' : (m.innings.length === 1 ? '1st innings' : '')}</span>`;
+      : `<span>CRR <b>${Rules.crr(inn).toFixed(2)}</b></span><span>${m.cfg.mode === 'nets' ? 'PRACTICE NETS · perfects ' + (Save.data.stats.perfects || 0) : inn.superOver ? 'SUPER OVER' : (m.innings.length === 1 ? '1st innings' : '')}</span>`;
     const chip = (s) => { const c = s.includes('W') ? 'bw' : s === '6' || s.endsWith('6') && !s.includes('wd') ? 'b6' : s === '4' ? 'b4' : /wd|nb|b|lb/.test(s) ? 'bx' : ''; return `<div class="ball-chip ${c}">${s}</div>`; };
     const showRun = Play.userBatting() && !Play.auto;
     $hud().innerHTML = `
       <div class="scorebug">
         <div class="sb-top"><div class="sb-team" style="background:${bt.c1}">${bt.short}</div>
-          <div class="sb-score">${inn.runs}/${inn.wkts}<small>${U.oversStr(inn.balls)}${inn.superOver ? '' : '/' + inn.oversLimit}</small></div>
+          <div class="sb-score">${inn.runs}/${inn.wkts}<small>${U.oversStr(inn.balls)}${inn.superOver ? '' : Number.isInteger(inn.oversLimit) ? '/' + inn.oversLimit : ' of ' + Math.round(inn.oversLimit * 6) + 'b'}</small></div>
           <div class="sb-req">${req}</div></div>
         <div class="sb-bot"><span class="on">${short(st.p.name)}* ${st.r}(${st.b})</span><span>${short(ns.p.name)} ${ns.r}(${ns.b})</span><span>${bw ? `${short(bw.p.name)} ${bw.wkts}-${bw.runs}` : ''}</span></div>
         ${inn.freeHit ? '<div class="freehit">FREE HIT</div>' : ''}
@@ -136,7 +220,7 @@ const UI = {
     if (!Play.userBatting() || Play.auto) return '';
     const inn = Rules.inn(Play.m);
     if (inn.balls > 2 && Save.data.tutorialSeen) return '';
-    return `<div class="hint">SWIPE where you want to hit, as the ball arrives.<br>Long swipe = lofted · Tap = defend · RUN = extra run</div>`;
+    return `<div class="hint">TAP when the ring turns <b style="color:#9fe870">GREEN</b><br>Swipe ↑ = big lofted hit · Swipe ↓ = defend<br>Early = leg side · Late = off side</div>`;
   },
 
   // ================= BOWLING CONTROLS =================
@@ -198,7 +282,7 @@ const UI = {
     sh.innerHTML = `<div class="card"><h2 class="h2">Paused</h2>
       <button class="btn" data-a="res">Resume</button><div style="height:10px"></div>
       <button class="btn alt" data-a="sc">Scorecard</button><div style="height:10px"></div>
-      <button class="btn alt" data-a="view">View: ${(Save.data.settings.view || 'iso') === 'iso' ? 'Isometric → switch to Top' : 'Top → switch to Isometric'}</button><div style="height:10px"></div>
+      <div class="h3" style="margin-top:0">Camera angle</div><div class="row wrap" style="margin-bottom:12px">${VIEW_ORDER.map(k => `<button class="chip ${R.view() === k ? 'on' : ''}" data-v="${k}">${VIEW_NAMES[k]}</button>`).join('')}</div>
       <button class="btn alt" data-a="sim">Simulate rest of innings</button><div style="height:10px"></div>
       <button class="btn red" data-a="quit">Quit match</button></div>`;
     $hud().appendChild(sh);
@@ -206,7 +290,7 @@ const UI = {
       '[data-a=res]': () => { sh.remove(); Game.paused = false; },
       '[data-a=sc]': () => { sh.remove(); this.scorecard(Play.m, () => { Game.paused = false; }); },
       '[data-a=sim]': () => { sh.remove(); Game.paused = false; Game.simInnings(); },
-      '[data-a=view]': () => { const st = Save.data.settings; st.view = (st.view || 'iso') === 'iso' ? 'top' : 'iso'; Save.save(); R.resize(); R.setCam(R.cam.tx, R.cam.ty, R.pitchZoom, true); sh.remove(); Game.paused = false; },
+      '[data-v]': (e, el) => { Save.data.settings.view = el.dataset.v; Save.save(); R.resize(); R.setCam(R.cam.tx, R.cam.ty, R.pitchZoom, true); sh.remove(); Game.paused = false; UI.toast(VIEW_NAMES[el.dataset.v] + ' view', 1000); },
       '[data-a=quit]': () => { sh.remove(); Game.paused = false; Game.quitMatch(); },
     });
   },
@@ -309,7 +393,7 @@ const UI = {
       <div class="toggle" data-k="sound">Sound <div class="sw ${s.sound ? 'on' : ''}"></div></div>
       <div class="toggle" data-k="vibrate">Vibration <div class="sw ${s.vibrate ? 'on' : ''}"></div></div>
       <div class="toggle" data-k="autoRun">Auto running (RUN button still adds risky runs) <div class="sw ${s.autoRun ? 'on' : ''}"></div></div>
-      <div class="h3">Camera view</div><div class="row">${[['iso', 'Isometric 3D'], ['top', 'Top view']].map(([k, n]) => `<button class="chip ${(s.view || 'iso') === k ? 'on' : ''}" data-v="${k}">${n}</button>`).join('')}</div>
+      <div class="h3">Camera angle</div><div class="row wrap">${VIEW_ORDER.map(k => `<button class="chip ${R.view() === k ? 'on' : ''}" data-v="${k}">${VIEW_NAMES[k]}</button>`).join('')}</div>
       <div class="h3">Difficulty</div><div class="row">${['easy', 'normal', 'hard'].map(d => `<button class="chip ${s.difficulty === d ? 'on' : ''}" data-d="${d}">${d}</button>`).join('')}</div>
       <div class="spacer"></div>
       <button class="btn red" data-a="reset">Reset all progress</button>`);
@@ -330,7 +414,8 @@ const UI = {
   howTo() {
     const scr = this.show(`<div class="row"><button class="btn small alt" data-a="back">←</button><h2 class="h2" style="margin:0">How to play</h2></div>
       <div class="card howto" style="margin-top:14px">
-        <p><b>BATTING</b> — Swipe in the direction you want to hit, just as the ball reaches you. Early timing pulls the ball to the leg side (left), late timing pushes it to the off side (right). Long swipe = lofted shot, tap = defensive block. Mistime it and you can edge it, get bowled, LBW or caught.</p>
+        <p><b>BATTING</b> — Just like Stick Cricket: TAP the screen when the ring around the batter turns <b>GREEN</b>. Your timing aims the shot — early sends it to the leg side, late to the off side, perfect goes straight. Swipe ↑ while tapping for a big lofted hit (needs great timing or you'll be caught), swipe ↓ to defend. Three PERFECT shots in a row puts you ON FIRE.</p>
+        <p><b>CAMERA</b> — Three angles: Stick Cricket, Isometric 3D and Top view. Change it any time from the pause menu or Settings.</p>
         <p><b>RUNNING</b> — Runs are auto-called safely. Tap <b>RUN</b> to push for an extra (risky!) run. Turn auto-running off in Settings to call every run yourself.</p>
         <p><b>BOWLING</b> — Pick a delivery, drag the yellow marker to set line & length, press Bowl and stop the meter in the green. Red zone on the right = extra pace but likely <b>no-ball</b>.</p>
         <p><b>RULES</b> — Wides (outside the guideline, down leg, or a bouncer over head height), no-balls (overstepping, waist-high full tosses, a 2nd bouncer in the over) followed by a <b>FREE HIT</b> (only run-out possible). Byes & leg-byes, LBW (not if pitched outside leg), stumpings when you charge a spinner, hit wicket, caught (new batter on strike). Ties go to a <b>Super Over</b> — repeated until there's a winner.</p>

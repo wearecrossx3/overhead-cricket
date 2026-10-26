@@ -65,7 +65,7 @@ button { font-family: var(--f); font-weight: 900; border: 0; cursor: pointer; co
 .run-btn { position: absolute; right: 12px; bottom: calc(var(--safe-b) + 12px); width: 92px; height: 92px; border-radius: 50%; background: var(--yellow); font-size: 20px; box-shadow: 0 6px 0 rgba(0,0,0,.25); display: none; }
 .run-btn.show { display: block; }
 .run-btn:active { transform: translateY(3px); }
-.hint { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-b) + 120px); background: rgba(15,29,51,.85); color: var(--cream); padding: 10px 14px; border-radius: 14px; font-weight: 800; font-size: 13px; text-align: center; max-width: 86%; pointer-events: none; }
+.hint { position: absolute; left: 12px; right: 116px; bottom: calc(var(--safe-b) + 100px); font-size: 12px !important; background: rgba(15,29,51,.85); color: var(--cream); padding: 10px 14px; border-radius: 14px; font-weight: 800; text-align: center; pointer-events: none; }
 .speed { position: absolute; top: calc(var(--safe-t) + 112px); right: 10px; background: rgba(15,29,51,.8); color: var(--cream); font-family: var(--f); font-weight: 900; font-size: 12px; padding: 6px 10px; border-radius: 10px; pointer-events: none; }
 
 /* ---------- Bowling controls ---------- */
@@ -136,3 +136,12 @@ table.sc td .how { display: block; font-size: 10px; color: var(--muted); font-we
 .howto p { font-size: 14px; line-height: 1.45; font-weight: 600; margin: 6px 0; }
 .howto b { font-family: var(--f); font-weight: 900; font-size: 13px; }
 .pill { display: inline-block; font-family: var(--f); font-weight: 900; font-size: 10px; padding: 4px 8px; background: var(--ink); color: var(--yellow); border-radius: 999px; letter-spacing: 1px; }
+.comm { position: absolute; left: 10px; right: 112px; bottom: calc(var(--safe-b) + 50px); background: rgba(15,29,51,.9); color: var(--cream); padding: 9px 12px; border-radius: 12px; font-weight: 800; font-size: 13px; opacity: 0; transform: translateY(8px); transition: opacity .25s, transform .25s; pointer-events: none; z-index: 5; }
+.comm.show { opacity: 1; transform: none; }
+
+#splash { position: absolute; inset: 0; background: var(--blue-d); display: grid; place-items: center; z-index: 50; transition: opacity .55s; }
+#splash.out { opacity: 0; pointer-events: none; }
+.sp-in { text-align: center; animation: spin-in .9s cubic-bezier(.2,.9,.3,1.2); }
+.sp-small { font-family: var(--f); font-weight: 900; letter-spacing: 6px; font-size: 12px; color: var(--yellow); }
+.sp-big { font-family: var(--f); font-weight: 900; font-size: 46px; line-height: .9; color: var(--cream); margin-top: 10px; }
+@keyframes spin-in { from { transform: scale(.7); opacity: 0; } }

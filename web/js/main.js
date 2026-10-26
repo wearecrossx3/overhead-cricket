@@ -9,6 +9,7 @@ const Game = {
     this.bindInput();
     requestAnimationFrame((t) => this.loop(t));
     UI.home();
+    const sp = document.getElementById('splash'); if (sp) setTimeout(() => { sp.classList.add('out'); setTimeout(() => sp.remove(), 600); }, 1100);
     document.addEventListener('visibilitychange', () => { if (document.hidden && Play.active && !this.demoOn && !this.paused && Play.phase !== 'idle') UI.pauseMenu(); });
   },
   loop(t) {
@@ -35,16 +36,53 @@ const Game = {
   stopDemo() { if (this.demoOn) { this.demoOn = false; Play.stop(); Play.auto = false; } },
 
   // ---------- Real matches ----------
-  playMatch(m, onDone) {
-    this.stopDemo(); UI.clear(); Play.auto = false; this.paused = false;
+  playMatch(m, onDone, prestarted) {
+    this.stopDemo(); UI.clear(); Play.auto = false; this.paused = false; Sfx.ambience(true);
+    Play.streak = 0; Play.fire = false; FX.list = [];
     this.onDone = onDone; this.matchStart = { coins: Save.data.coins };
-    Rules.startInnings(m, m.cfg.batFirst || 'A');
+    if (m.cfg.night == null) m.cfg.night = Math.random() < .4;
+    if (!prestarted) Rules.startInnings(m, m.cfg.batFirst || 'A');
     const userSide = m.sides.A.isUser ? 'A' : 'B';
     Play.begin(m, userSide, {
-      onBall: () => { const inn = Rules.inn(m); if (inn.balls >= 3 && inn.bat === userSide) { Save.data.tutorialSeen = true; } },
-      onInnings: () => this.afterInnings(m),
+      onBall: (r) => {
+        const inn = Rules.inn(m); if (inn.balls >= 3 && inn.bat === userSide) { Save.data.tutorialSeen = true; }
+        if (Play.fire) Ach.unlock('fire');
+      },
+      onInnings: () => m.cfg.mode === 'challenge' ? this.finishChallenge(m) : this.afterInnings(m),
       needBowler: (list, cb) => UI.chooseBowler(list, cb),
     });
+  },
+  // ---------- Challenge scenarios ----------
+  playChallenge(i) {
+    const ch = CHALLENGES[i], sq = defaultSquads();
+    const mine = (Save.data.career && Save.data.career.userTeam) || (UI.qs && UI.qs.mine) || 'RJR';
+    const opp = ch.opp === mine ? 'AMA' : ch.opp;
+    const m = Rules.newMatch({ overs: Math.max(1, Math.ceil(ch.balls / 6)), mode: 'challenge', chIndex: i, night: i % 3 === 2,
+      teamA: { teamId: mine, xi: pickBestXI(sq[mine]), isUser: true }, teamB: { teamId: opp, xi: pickBestXI(sq[opp]), isUser: false } });
+    const batSide = ch.kind === 'chase' ? 'A' : 'B';
+    const opts = { target: ch.need, overs: ch.balls / 6, maxWkts: ch.wkts };
+    if (ch.kind === 'defend' && ch.spinOnly) opts.bowlers = m.sides.A.xi.filter(p => p.bowlType === 'spin' && p.role !== 'WK').slice(0, 4);
+    Rules.startInnings(m, batSide, opts);
+    this.playMatch(m, null, true);
+  },
+  finishChallenge(m) {
+    Play.phase = 'idle'; UI.clearHud(); Sfx.ambience(false);
+    const i = m.cfg.chIndex, ch = CHALLENGES[i], inn = m.innings[0];
+    const stars = Challenges.evaluate(ch, inn), all = Challenges.stars(), prev = all[i] || 0;
+    let coins = 0; if (stars > prev) { coins = (stars - prev) * 40; all[i] = stars; Save.addCoins(coins); }
+    Save.data.stats.matches++; if (stars) Save.data.stats.wins++; Save.save();
+    Ach.checkMatch(m, 'A', stars > 0);
+    setTimeout(() => UI.challengeResult(m, i, stars, coins), 600);
+  },
+  // ---------- Practice nets: endless batting, timing feedback ----------
+  nets() {
+    const sq = defaultSquads(), mine = (Save.data.career && Save.data.career.userTeam) || 'RJR', opp = U.pick(TEAMS.filter(t => t.id !== mine)).id;
+    const m = Rules.newMatch({ overs: 50, mode: 'nets', superOver: false, night: false,
+      teamA: { teamId: mine, xi: pickBestXI(sq[mine]), isUser: true }, teamB: { teamId: opp, xi: pickBestXI(sq[opp]), isUser: false } });
+    const xi = m.sides.A.xi; const many = []; for (let i = 0; i < 18; i++) many.push(...xi);
+    Rules.startInnings(m, 'A', { batters: many, maxWkts: many.length - 1, overs: 50 });
+    this.playMatch(m, null, true);
+    UI.toast('Practice nets — no pressure. Learn the timing!', 2200);
   },
   afterInnings(m) {
     Play.phase = 'idle'; UI.clearHud();
@@ -56,7 +94,7 @@ const Game = {
     setTimeout(() => UI.inningsBreak(m, resume), 500);
   },
   finishMatch(m) {
-    Play.phase = 'idle'; UI.clearHud();
+    Play.phase = 'idle'; UI.clearHud(); Sfx.ambience(false);
     const userSide = m.sides.A.isUser ? 'A' : 'B';
     const won = m.result.winner === userSide;
     const mult = { easy: .7, normal: 1, hard: 1.4 }[Save.data.settings.difficulty] || 1;
@@ -76,6 +114,8 @@ const Game = {
     Save.addCoins(total);
     const st = Save.data.stats; st.matches++; if (won) st.wins++; st.highScore = Math.max(st.highScore, best);
     Save.save();
+    Ach.checkMatch(m, userSide, won);
+    if (m.cfg.mode === 'league' && Save.data.career && Save.data.career.league && Save.data.career.league.champion === Save.data.career.userTeam) Ach.unlock('champion');
     const cb = this.onDone; this.onDone = null;
     cb && cb({ lines, total });
   },
@@ -86,8 +126,9 @@ const Game = {
     this.afterInnings(m);
   },
   quitMatch() {
-    const m = Play.m; Play.stop(); Play.m = null; UI.clearHud();
-    if (m && m.cfg.mode === 'league') UI.leagueHub(); else UI.home();
+    Sfx.ambience(false);
+    const m = Play.m; Play.stop(); Play.m = null; UI.clearHud(); FX.list = []; R.night = false; Play.slow = null;
+    if (m && m.cfg.mode === 'league') UI.leagueHub(); else if (m && m.cfg.mode === 'challenge') UI.challenges(); else UI.home();
   },
 
   // ---------- Input ----------
@@ -97,25 +138,26 @@ const Game = {
     cv.addEventListener('pointerdown', (e) => {
       Sfx.ensure();
       this.ptr = { x: e.clientX, y: e.clientY, t: performance.now() };
-      if (Play.phase === 'setup' && UI.bowlTarget && Play.userBowling()) { this.dragging = true; this.dragTo(e); }
+      if (Play.phase === 'setup' && UI.bowlTarget && Play.userBowling()) { this.dragging = true; this.dragTo(e); return; }
+      if (Play.phase === 'dead') { Play.skipReq = true; return; }
+      if (!this.paused) Play.userPress();
     });
-    cv.addEventListener('pointermove', (e) => { if (this.dragging) this.dragTo(e); });
+    cv.addEventListener('pointermove', (e) => {
+      if (this.dragging) return this.dragTo(e);
+      if (this.ptr) Play.userGesture(e.clientX - this.ptr.x, e.clientY - this.ptr.y, false);
+    });
     const up = (e) => {
       if (this.dragging) { this.dragging = false; this.ptr = null; return; }
       if (!this.ptr) return;
-      const dx = e.clientX - this.ptr.x, dy = e.clientY - this.ptr.y, len = Math.hypot(dx, dy);
+      Play.userGesture(e.clientX - this.ptr.x, e.clientY - this.ptr.y, true);
       this.ptr = null;
-      if (Play.phase !== 'flight' || !Play.userBatting() || this.paused) return;
-      if (len < 22) Play.userShot(-Math.PI / 2, .2, true);
-      else { const w = R.vecToWorld(dx, dy); Play.userShot(Math.atan2(w.y, w.x), U.clamp(len / (Math.min(R.W, R.H) * .5), .15, 1), false); }
     };
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', () => { this.ptr = null; this.dragging = false; });
-    // keyboard (desktop testing): arrows aim, space = defend, shift = loft
+    // keyboard (desktop testing): space = drive, up = loft, down = defend
     window.addEventListener('keydown', (e) => {
       if (Play.phase !== 'flight' || !Play.userBatting()) return;
-      const map = { ArrowUp: -Math.PI / 2, ArrowLeft: -2.5, ArrowRight: -.6, ArrowDown: Math.PI / 2 };
-      if (e.code === 'Space') Play.userShot(-Math.PI / 2, .2, true);
-      else if (map[e.key] !== undefined) Play.userShot(map[e.key], e.shiftKey ? .95 : .5, false);
+      if (!Play.userPress()) return;
+      Play.userGesture(0, e.key === 'ArrowUp' ? -60 : e.key === 'ArrowDown' ? 60 : 0, true);
     });
   },
   dragTo(e) {

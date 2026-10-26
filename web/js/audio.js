@@ -38,6 +38,18 @@ const Sfx = {
     const g = c.createGain(); g.gain.value = .35 * intensity;
     src.connect(f).connect(g).connect(c.destination); src.start();
   },
+  // looping stadium murmur during matches
+  ambience(on) {
+    const c = this.ensure(); if (!c) return;
+    if (!on || !this.on()) { if (this.amb) { try { this.amb.src.stop(); } catch (e) {} this.amb = null; } return; }
+    if (this.amb) return;
+    const len = c.sampleRate * 4, buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
+    let last = 0; for (let i = 0; i < len; i++) { last = last * .97 + (Math.random() * 2 - 1) * .03; d[i] = last * (0.8 + 0.2 * Math.sin(i / c.sampleRate * 1.3)); }
+    const src = c.createBufferSource(); src.buffer = buf; src.loop = true;
+    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 650; f.Q.value = .4;
+    const g = c.createGain(); g.gain.value = .5;
+    src.connect(f).connect(g).connect(c.destination); src.start(); this.amb = { src, g };
+  },
   click() { this.tone(880, .05, .08, 'square'); },
   coin() { this.tone(1320, .08, .1, 'square'); setTimeout(() => this.tone(1760, .12, .1, 'square'), 70); },
   gavel() { this.noise(.12, 400, .9, 'lowpass'); this.tone(140, .15, .3, 'triangle'); },

@@ -24,11 +24,14 @@ const R = {
     this.W = window.innerWidth; this.H = window.innerHeight;
     this.cv.width = this.W * this.dpr; this.cv.height = this.H * this.dpr;
     this.cv.style.width = this.W + 'px'; this.cv.style.height = this.H + 'px';
-    this.pitchZoom = this.isIso() ? Math.min(this.H / 21, this.W / 14.5) : Math.min(this.H / 27, this.W / 11);
+    const v = this.view();
+    this.pitchZoom = v === 'iso' ? Math.min(this.H / 21, this.W / 14.5) : v === 'stick' ? Math.min(this.H / 19, this.W / 9) : Math.min(this.H / 27, this.W / 11);
   },
   // ---- View / projection: 'iso' (rotated + tilted ground, upright figures) or 'top' ----
-  isIso() { return !Save.data || (Save.data.settings.view || 'iso') === 'iso'; },
-  ISO: { ang: .46, sq: .56, zh: .9 },
+  view() { return (Save.data && Save.data.settings.view) || 'stick'; },
+  isIso() { return this.view() !== 'top'; }, // any view with upright figures
+  VIEWS: { iso: { ang: .46, sq: .56, zh: .9 }, stick: { ang: Math.PI, sq: .6, zh: .88 } },
+  get ISO() { return this.VIEWS[this.view()] || this.VIEWS.iso; },
   lin() { // linear part world->screen (before zoom)
     if (!this.isIso()) return { a: 1, b: 0, c: 0, d: 1 };
     const { ang, sq } = this.ISO, co = Math.cos(ang), si = Math.sin(ang);
@@ -75,7 +78,8 @@ const R = {
 
   begin() {
     const g = this.ctx; g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    g.fillStyle = '#1d3f6b'; g.fillRect(0, 0, this.W, this.H);
+    g.fillStyle = this.night ? '#0a1428' : '#1d3f6b'; g.fillRect(0, 0, this.W, this.H);
+    if (this.shake > .3) g.translate(U.rand(-1, 1) * this.shake, U.rand(-1, 1) * this.shake);
     // world transform
     const L = this.lin();
     g.save(); g.translate(this.W / 2, this.H / 2); g.scale(this.cam.z, this.cam.z); g.transform(L.a, L.b, L.c, L.d, 0, 0); g.translate(-this.cam.x, -this.cam.y);
@@ -272,16 +276,17 @@ const R = {
     if (!broken) { const l = this.proj(-.13, y, .72), r = this.proj(.13, y, .72); g.strokeStyle = '#d6232a'; g.lineWidth = Math.max(2, .035 * k); g.beginPath(); g.moveTo(l.x, l.y); g.lineTo(r.x, r.y); g.stroke(); }
   },
   isoBall(b) {
-    const g = this.ctx, k = this.cam.z, P = this.proj(b.x, b.y, b.z), r = Math.max(3, .11 * 1.3 * k);
+    const g = this.ctx, k = this.cam.z, P = this.proj(b.x, b.y, b.z), r = Math.max(4, .11 * 1.75 * k);
+    g.fillStyle = 'rgba(255,255,255,.18)'; g.beginPath(); g.arc(P.x, P.y, r * 1.9, 0, Math.PI * 2); g.fill();
     g.fillStyle = b.white ? '#f8f8f4' : '#c41e24'; g.beginPath(); g.arc(P.x, P.y, r, 0, Math.PI * 2); g.fill();
     g.strokeStyle = 'rgba(0,0,0,.18)'; g.lineWidth = 1; g.stroke();
     g.fillStyle = 'rgba(255,255,255,.8)'; g.beginPath(); g.arc(P.x - r * .35, P.y - r * .35, r * .32, 0, Math.PI * 2); g.fill();
   },
-  isoTrail(trail) {
+  isoTrail(trail, fire) {
     const g = this.ctx; if (trail.length < 2) return;
     for (let i = 1; i < trail.length; i++) {
       const a = this.proj(trail[i - 1].x, trail[i - 1].y, trail[i - 1].z), b = this.proj(trail[i].x, trail[i].y, trail[i].z);
-      g.strokeStyle = `rgba(255,255,255,${(i / trail.length) * .45})`; g.lineWidth = .1 * this.cam.z * (i / trail.length);
+      g.strokeStyle = fire ? `rgba(255,${120 + i * 6},40,${(i / trail.length) * .8})` : `rgba(255,255,255,${(i / trail.length) * .55})`; g.lineWidth = (fire ? .28 : .14) * this.cam.z * (i / trail.length);
       g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
     }
   },

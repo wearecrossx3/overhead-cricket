@@ -55,14 +55,19 @@ const Play = {
     this.bat2 = { x: .9, y: -9.4, face: Math.PI, pose: 'stand', t: 0, kit: this.batKit, helmet: true, pads: true, gloves: true, holdsBat: true, bat: 1.2 };
     this.keeper = { x: .3, y: 13, hx: .3, hy: 13, face: Math.PI, pose: 'keep', t: 0, kit: this.fieldKit, gloves: true, pads: true, helmet: false, cap: true, role: 'keeper', p: keeperP, speed: 6.5 };
     this.bowlerEnt = { x: .5, y: -24, face: Math.PI, pose: 'stand', t: 0, kit: this.fieldKit, role: 'bowler', speed: 7 };
+    const umpKit = { shirt: '#f4f2ea', trouser: '#2b2b2b', head: '#f2f2ee', stripe: '#d9d4c4' };
+    this.umps = [{ x: 0, y: -12.4, face: 0, pose: 'stand', t: 0, kit: umpKit, hat: true, skin: '#a86b45', role: 'ump' }, { x: -26, y: 9.2, face: Math.PI / 2, pose: 'stand', t: 0, kit: umpKit, hat: true, skin: '#8d5a3b', role: 'ump' }];
+    R.night = !!this.m.cfg.night;
     this.placeField();
     this.refreshPlayers();
   },
   refreshPlayers() {
     const inn = Rules.inn(this.m);
     const st = Rules.striker(inn).p, ns = Rules.nonStriker(inn).p;
-    Object.assign(this.bat1, { skin: st.skin, hair: st.hair, pid: st.id });
-    Object.assign(this.bat2, { skin: ns.skin, hair: ns.hair, pid: ns.id });
+    const num = (p) => (parseInt(p.id, 36) % 98) + 1;
+    const bc = Save.data.shop && this.userBatting() ? SHOP.bat().color : null;
+    Object.assign(this.bat1, { skin: st.skin, hair: st.hair, pid: st.id, num: num(st), batColor: bc });
+    Object.assign(this.bat2, { skin: ns.skin, hair: ns.hair, pid: ns.id, num: num(ns), batColor: bc });
     const bw = inn.bowlerId ? Rules.bowler(inn).p : null;
     if (bw) Object.assign(this.bowlerEnt, { skin: bw.skin, hair: bw.hair, p: bw });
     this.keeper.skin = this.keeperP.skin;
@@ -77,7 +82,7 @@ const Play = {
     const fxi = this.m.sides[inn.bowl].xi.filter(p => p.id !== this.keeperP.id && (!bw || p.id !== bw.id));
     this.fielders = FIELDS[set].map((pos, i) => {
       const p = fxi[i % fxi.length];
-      return { x: pos[0], y: pos[1], hx: pos[0], hy: pos[1], face: Math.atan2(9 - pos[1], 0 - pos[0]) + Math.PI / 2, pose: 'crouch', t: Math.random() * 3, kit: this.fieldKit, cap: true, p, speed: 5.0 + p.field / 40, role: 'field', skin: p.skin, hair: p.hair };
+      return { x: pos[0], y: pos[1], hx: pos[0], hy: pos[1], face: Math.atan2(9 - pos[1], 0 - pos[0]) + Math.PI / 2, pose: 'crouch', t: Math.random() * 3, kit: this.fieldKit, cap: true, p, speed: 5.0 + p.field / 40, role: 'field', skin: p.skin, hair: p.hair, num: (parseInt(p.id, 36) % 98) + 1 };
     });
     // keeper stands up to spinners, back to pace
     const spin = bw && bw.bowlType === 'spin';
@@ -85,7 +90,7 @@ const Play = {
     this.allFielders = [...this.fielders, this.keeper, this.bowlerEnt];
   },
   resetPositions() {
-    this.bat1.x = -.3; this.bat1.y = 9.3; this.bat1.face = Math.PI / 2; this.bat1.pose = 'bat'; this.bat1.bat = 2.2;
+    this.bat1.x = -.3; this.bat1.y = 9.3; this.bat1.face = Math.PI / 2; this.bat1.pose = 'bat'; this.bat1.bat = 2.2; this.bat1.backlift = 0; this.bat1.fire = !!this.fire;
     this.bat2.x = .9; this.bat2.y = -9.4; this.bat2.face = Math.PI; this.bat2.pose = 'stand';
     this.fielders.forEach(f => { f.x = f.hx; f.y = f.hy; f.pose = 'crouch'; f.face = Math.atan2(9 - f.hy, -f.hx) + Math.PI / 2; });
     this.keeper.x = this.keeper.hx; this.keeper.y = this.keeper.hy; this.keeper.pose = 'keep'; this.keeper.face = Math.PI;
@@ -208,7 +213,23 @@ const Play = {
     this.phase = 'runup'; this.phaseT = 0;
   },
 
-  // ---------- User batting input (swipe) ----------
+  // ---------- User batting input: Stick-Cricket style ----------
+  // press = swing (timing decides direction). Swipe up while pressing = lofted, swipe down = defend.
+  userPress() {
+    if (this.phase !== 'flight' || this.shot || !this.userBatting() || this.auto) return false;
+    const d = this.del; const lag = .025 * this.diff().ts; // touch latency compensation
+    this.registerShot(-Math.PI / 2, .6, false);
+    this.shot.tShot = d.t - lag; this.shot.tap = true; this.shot.pending = true; this.shot.pressT = performance.now();
+    return true;
+  },
+  userGesture(dxScreen, dyScreen, final) {
+    const sh = this.shot; if (!sh || !sh.pending) return;
+    if (dyScreen < -32) { sh.loft = true; sh.block = false; sh.power = .93; }
+    else if (dyScreen > 32) { sh.block = true; sh.loft = false; sh.power = .2; }
+    if (Math.abs(dxScreen) > 30) { const w = R.vecToWorld(dxScreen, 0); sh.nudge = U.clamp(w.x / Math.max(1, Math.abs(w.x)) * .5, -.5, .5); }
+    if (final || performance.now() - sh.pressT > 150) sh.pending = false;
+  },
+  // ---------- (legacy swipe API kept for keyboard/tests) ----------
   // angle: world direction of swipe; power 0..1 ; block when tap
   userShot(angle, power, isTap) {
     if (this.phase !== 'flight' || this.shot) return;
@@ -252,9 +273,13 @@ const Play = {
     this.aiPlan = { at: d.tArrive + e, angle, power: block ? .2 : U.clamp(power, .2, 1), block };
   },
 
+  slowmo(dur, f) { this.slow = { t: dur, f }; },
   // ---------- Update ----------
   update(dt) {
     if (!this.active) return;
+    FX.update(dt); R.shake *= Math.pow(.02, dt); if (R.cheer > 0) R.cheer -= dt;
+    if (this.sigT > 0 && (this.sigT -= dt) <= 0) this.umps[0].signal = null;
+    if (this.slow) { this.slow.t -= dt; dt *= this.slow.f; if (this.slow.t <= 0) this.slow = null; }
     this.t += dt;
     [this.bat1, this.bat2, this.keeper, this.bowlerEnt, ...this.fielders].forEach(p => p.t += dt);
     this.popups = this.popups.filter(p => (p.life -= dt) > 0);
@@ -263,7 +288,7 @@ const Play = {
       case 'runup': this.updRunup(dt); break;
       case 'flight': this.updFlight(dt * this.diff().ts); break;
       case 'inplay': this.updInplay(dt * .9); break;
-      case 'dead': this.phaseT += dt; if (this.phaseT > this.deadWait) this.finishBall(); break;
+      case 'dead': this.phaseT += dt; if (this.phaseT > this.deadWait || (this.skipReq && this.phaseT > .45)) { this.skipReq = false; this.finishBall(); } break;
     }
     this.updCamera(dt);
   },
@@ -297,12 +322,17 @@ const Play = {
     const wasBounced = b.b; Object.assign(b, { x: s.x, y: s.y, z: s.z, b: s.b });
     if (s.b && !wasBounced) Sfx.bounce();
     b.trail.push({ x: b.x, y: b.y, z: b.z }); if (b.trail.length > 14) b.trail.shift();
+    // backlift as the ball approaches (anticipation)
+    if (!this.shot) this.bat1.backlift = U.clamp(1 - (d.tArrive - d.t) / .5, 0, 1) * .8;
+    else this.bat1.backlift = 0;
     // bat swing animation
     if (this.shot) { this.shot.swingT += dt; this.bat1.bat = 2.2 - Math.min(1, this.shot.swingT / .16) * 3.4; if (this.shot.charge) this.bat1.y = U.lerp(this.bat1.y, 7.6, dt * 6); }
     // contact window
     if (d.t >= d.tArrive && !this.resolved) {
       const lateWindow = .17 * this.diff().win;
-      if (this.shot) { this.resolveShot(); return; }
+      if (this.shot && this.shot.pending && performance.now() - this.shot.pressT > 150) this.shot.pending = false;
+      if (this.shot && !this.shot.pending) { this.resolveShot(); return; }
+      if (this.shot) return;
       if (d.t > d.tArrive + lateWindow * .5 && !this.userBatting()) { this.resolved = 'miss'; }
       else if (d.t > d.tArrive + lateWindow) { this.resolved = 'miss'; }
       if (this.resolved === 'miss') this.checkMissAtBatter();
@@ -367,7 +397,9 @@ const Play = {
     const d = this.del, sh = this.shot, inn = Rules.inn(this.m), st = Rules.striker(inn).p;
     this.resolved = 'hit';
     const e = sh.tShot - d.tArrive; // + late, - early (sim seconds)
-    const win = this.diff().win * (this.userBatting() && !this.auto ? 1 : 1) * (.8 + st.bat / 250);
+    const userBat = this.userBatting() && !this.auto;
+    const bat_ = Save.data.shop ? SHOP.bat() : null;
+    const win = this.diff().win * (userBat ? .92 * (bat_ ? bat_.timing : 1) * (this.fire ? 1.15 : 1) : 1) * (.8 + st.bat / 250);
     const q = Math.abs(e) / win;
     const h = d.atHit || { x: 0, z: .5 };
     // too far from the ball to reach
@@ -381,12 +413,15 @@ const Play = {
     // yorkers are hard to get under
     if (outcome === 'hit' && len > 7.7 && !sh.block) quality *= .55;
     if (outcome === 'hit' && d.bouncer && sh.loft && quality < .35 && Math.random() < .5) outcome = 'topedge';
+    // lofting against a good-length ball is risky; mistimed lofts balloon up
+    if (outcome === 'hit' && sh.loft && len > 2 && len < 6.2 && d.bw.bowlType === 'pace') quality *= .88;
+    if (outcome === 'hit' && sh.loft && quality < .5 && Math.random() < .45) outcome = 'topedge';
     // hit wicket: playing back to a short ball with poor timing
     if ((outcome !== 'hit' || quality < .3) && len < 2 && !sh.block && Math.random() < .035) {
       this.stumpsBroken.s = true; Sfx.stumps(); return this.endBall({ wicket: 'hitwicket' }, 1.6, 'HIT WICKET!');
     }
     if (window.__dbg) window.__dbg.push({ k: 'shot', bt: d.bw.bowlType, ty: d.type, hx: +h.x.toFixed(2), hz: +h.z.toFixed(2), outcome, q: +(quality || 0).toFixed(2), e: +e.toFixed(3), loft: sh.loft, block: sh.block, len: +len.toFixed(1) });
-    if (outcome === 'miss') { this.resolved = 'miss'; this.checkMissAtBatter(); this.popup(e < 0 ? 'Too early' : 'Too late', '#fff', .8, 'small'); return; }
+    if (outcome === 'miss') { this.resolved = 'miss'; this.checkMissAtBatter(); this.popup(e < 0 ? 'TOO EARLY' : 'TOO LATE', '#fff', .8, 'small'); if (userBat) { this.streak = 0; this.fire = false; } return; }
     let ang, v, vz;
     const bat = st.bat / 100;
     if (outcome === 'edge') {
@@ -397,15 +432,24 @@ const Play = {
     } else if (outcome === 'topedge') {
       ang = U.rand(-2.6, -.6) + Math.PI * (Math.random() < .5 ? 0 : .9); v = U.rand(6, 12); vz = U.rand(12, 17); Sfx.edge();
     } else {
-      ang = sh.angle + e * 5.5 + U.rand(-.12, .12) * (1 - quality);
+      ang = sh.tap ? (-Math.PI / 2 + (sh.nudge || 0) + e * 9.5 + U.rand(-.1, .1) * (1 - quality)) : (sh.angle + e * 5.5 + U.rand(-.12, .12) * (1 - quality));
       if (sh.block) { v = 3 + quality * 5 + sh.power * 4; vz = .4; }
       else {
-        v = (18 + sh.power * 24) * (.5 + .5 * quality) * (.85 + bat * .3);
-        vz = sh.loft ? (6 + sh.power * 9) * (.6 + .4 * quality) : U.rand(.3, 1.6);
+        v = (sh.loft ? (14 + sh.power * 19) * (.3 + .7 * quality) : (18 + sh.power * 24) * (.5 + .5 * quality)) * (.85 + bat * .3) * (userBat ? (bat_ ? bat_.power : 1) * (this.fire ? 1.06 : 1) : 1);
+        vz = sh.loft ? (5 + sh.power * 8) * (.45 + .55 * quality) : U.rand(.3, 1.6);
         if (sh.loft && quality > .82 && sh.power > .8) { v *= 1.12; vz *= 1.05; }
       }
       Sfx.bat(.4 + quality * .6); if (quality > .85 && !sh.block) vibrate(25);
-      if (quality > .9 && !sh.block) this.popup('PERFECT', '#9fe870', .7, 'small');
+      if (userBat && !sh.block) {
+        const bp = R.proj(this.bat1.x, this.bat1.y, 1);
+        if (quality > .85) {
+          this.streak = (this.streak || 0) + 1; this.popup('PERFECT!', '#9fe870', .8, 'mid'); Save.data.stats.perfects = (Save.data.stats.perfects || 0) + 1;
+          FX.burst(bp.x, bp.y, 18, { spark: true, colors: ['#fff', '#f5c518', '#9fe870'], vmin: 80, vmax: 260, g: 0, life: .5, size: .8 });
+          if (this.streak === 3) { this.fire = true; this.popup('ON FIRE!', '#ff8a3d', 1.4, 'big'); Sfx.crowd(1); }
+        } else { this.streak = 0; this.popup(quality > .45 ? 'GOOD' : (e < 0 ? 'EARLY' : 'LATE'), quality > .45 ? '#f5c518' : '#fff', .6, 'small'); }
+        if (quality > .6 && sh.loft) this.slowmo(.55, .32);
+        R.shake = Math.max(R.shake, quality * 5);
+      }
     }
     this.startInplay({ vx: Math.cos(ang) * v, vy: Math.sin(ang) * v, vz, hit: true });
   },
@@ -444,7 +488,7 @@ const Play = {
         }
       } else {
         const sp = Math.hypot(s.vx, s.vy); if (sp < .25) { s.vx = s.vy = 0; continue; }
-        const nsp = Math.max(0, sp - 3.6 * h); s.vx *= nsp / sp; s.vy *= nsp / sp; s.x += s.vx * h; s.y += s.vy * h;
+        const nsp = Math.max(0, sp - 6 * h); s.vx *= nsp / sp; s.vy *= nsp / sp; s.x += s.vx * h; s.y += s.vy * h;
       }
     }
   },
@@ -640,6 +684,7 @@ const Play = {
     if (need <= ip.runs + 1 && need < 99) margin = -.3;      // winning run: risk it
     if (ballsLeft <= 1 && need < 99) margin = -.5;
     if (this.userBowling() && !this.auto) margin -= .12;     // AI is a bit braver vs user (gives run-out chances)
+    if (this.userBatting() && !this.auto) margin -= .15;     // keep the scoreboard ticking for the player
     const go = tBall + ip.noise * .6 > tRun + margin;
     if (go && window.__dbg) window.__dbg.push({ k: 'run', tBall: +tBall.toFixed(2), held: !!ip.held, thrown: !!ip.thrown, chT: ip.chaser ? +ip.chaser.hit.t.toFixed(2) : null, late: ip.chaser && ip.chaser.hit.late, ph: +this.phaseT.toFixed(2), runs: ip.runs });
     return go;
@@ -733,6 +778,19 @@ const Play = {
     if (extra === 'wd' && outcome.boundary) { outcome.boundary = 0; } // 4 wides
     if (bannerText) this.popup(bannerText, wicket ? '#ff5a4e' : (res.boundary === 6 ? '#ffd23f' : '#fff'), wait, 'big');
     else if (extra === 'wd') this.popup('WIDE', '#fff', .9);
+    // umpire signal + celebrations
+    const sig = wicket ? 'out' : outcome.boundary === 6 ? 'six' : outcome.boundary === 4 ? 'four' : extra === 'wd' ? 'wide' : extra === 'nb' ? 'nb' : (extra === 'b' || extra === 'lb') ? 'bye' : null;
+    if (sig) { this.umps[0].signal = sig; this.sigT = 1.8; }
+    if (outcome.boundary === 6 && !extra) { R.cheer = 3; R.shake = 9; for (let i = 0; i < 4; i++) setTimeout(() => FX.burst(U.rand(.1, .9) * R.W, R.H * .12, 40, { dir: Math.PI / 2, spread: 1.2, vmin: 100, vmax: 420 }), i * 180); this.slowmo(.4, .5); }
+    else if (outcome.boundary === 4) { R.cheer = 1.8; FX.burst(R.W / 2, R.H * .3, 26, { vmin: 120, vmax: 360 }); }
+    if (wicket) {
+      R.shake = 10; R.cheer = 2;
+      const end = (wicket.type === 'runout' && this.stumpsBroken.ns) ? -STUMP_Y : STUMP_Y, sp = R.proj(0, end, .7);
+      FX.burst(sp.x, sp.y, 22, { colors: ['#efe2c2', '#d6232a', '#ffffff'], vmin: 120, vmax: 380, size: 1.2 });
+      if (this.userBatting() && !this.auto) { this.streak = 0; this.fire = false; }
+    }
+    this.lastComment = Commentary.line(outcome, this, res);
+    if (this.lastComment) UI.comment(this.lastComment);
     // keep celebrating for a moment
     if (wicket) this.allFielders.forEach(f => { if (U.dist(f.x, f.y, 0, 0) < 30) f.pose = 'celebrate'; });
     this.pending = outcome;
@@ -759,14 +817,18 @@ const Play = {
 
   // ---------- Camera ----------
   updCamera(dt) {
-    const b = this.ball;
+    const b = this.ball, v = R.view();
     if (this.phase === 'inplay' && b) {
       const cy = (b.y + 4) / 2, cx = b.x / 2;
       const span = Math.max(16, Math.abs(b.y - 4) + 10, Math.abs(b.x) * 2 * (R.H / R.W) + 10);
-      R.setCam(cx, cy, Math.min(R.pitchZoom, (R.isIso() ? 1.25 : 1) * R.H / span));
+      R.setCam(cx, cy, Math.min(R.pitchZoom * 1.1, (R.isIso() ? 1.25 : 1) * R.H / span));
     } else if (this.phase === 'dead' && this.inplay && b) {
       // hold framing
-    } else R.setCam(R.isIso() ? .3 : 0, R.isIso() ? .6 : 1.5, R.pitchZoom);
+    } else if ((this.phase === 'flight' || this.phase === 'runup') && v !== 'top') {
+      // tighter "broadcast" framing that leans towards the striker
+      const z = R.pitchZoom * (v === 'stick' ? .92 : 1.22);
+      R.setCam(v === 'iso' ? .2 : 0, v === 'stick' ? 3.2 : 2.4, z);
+    } else R.setCam(v === 'iso' ? .3 : 0, v === 'iso' ? .6 : v === 'stick' ? 1.5 : 1.5, R.pitchZoom * (v === 'stick' ? .92 : 1));
     R.updateCam(dt);
   },
 
@@ -779,25 +841,39 @@ const Play = {
     if (this.phase === 'setup' && this.userBowling() && UI.bowlTarget) R.drawMarker(UI.bowlTarget.x, UI.bowlTarget.y, '#ffd23f', .4, .06);
     if (this.del && this.diff().hint && this.userBatting() && this.del.bounceAt && this.phase === 'flight' && this.del.t < this.del.bounceAt.t + .1) R.drawMarker(this.del.bounceAt.x, this.del.bounceAt.y, 'rgba(255,255,255,.7)', .3);
     const people = [...this.fielders, this.keeper, this.bowlerEnt, this.bat1, this.bat2];
-    const umps = [{ x: 0, y: -12.4, face: 0 }, { x: -26, y: 9.2, face: Math.PI / 2 }].map(u => ({ ...u, pose: 'stand', t: 0, kit: { shirt: '#f2f2ee', trouser: '#2b2b2b', head: '#f2f2ee' }, cap: true, skin: '#a86b45' }));
+    const umps = this.umps || [];
     if (!R.isIso()) {
       R.drawStumps(STUMP_Y, this.stumpsBroken.s); R.drawStumps(-STUMP_Y, this.stumpsBroken.ns);
       people.forEach(p => R.drawShadowOf(p));
       R.drawUmpire(0, -12.4); R.drawUmpire(-26, 9.2);
       people.sort((a, b) => a.y - b.y).forEach(p => R.drawPerson(p));
       if (this.ball) { R.drawTrail(this.ball.trail); R.drawBall(this.ball); }
+      R.popWorld(); R.nightOverlay();
     } else {
       [...people, ...umps].forEach(p => R.drawShadowOf(p));
       if (this.ball) R.ballShadow(this.ball);
       R.popWorld();
+      R.nightOverlay();
+      R.drawStadium(); R.drawBoards(false);
+      // where the ball will pitch (briefly) — reading the length is half of batting
+      const d = this.del;
+      if (d && this.phase === 'flight' && d.bounceAt && this.userBatting() && !this.auto) R.pitchSpot(d.bounceAt.x, d.bounceAt.y, U.clamp(1 - Math.abs(d.t - d.bounceAt.t) * 3, 0, .9));
       // depth-sort everything by projected ground position
       const items = [...people, ...umps].map(p => ({ d: R.proj(p.x, p.y).y, f: () => R.isoPerson(p) }));
       items.push({ d: R.proj(0, STUMP_Y).y, f: () => R.isoStumps(STUMP_Y, this.stumpsBroken.s) });
       items.push({ d: R.proj(0, -STUMP_Y).y, f: () => R.isoStumps(-STUMP_Y, this.stumpsBroken.ns) });
-      if (this.ball) { const b = this.ball; items.push({ d: R.proj(b.x, b.y).y + .01, f: () => { R.isoTrail(b.trail); R.isoBall(b); } }); }
+      if (this.ball) { const b = this.ball; items.push({ d: R.proj(b.x, b.y).y + .01, f: () => { R.isoTrail(b.trail, this.fire && this.userBatting()); R.isoBall(b); } }); }
       items.sort((a, b) => a.d - b.d).forEach(i => i.f());
+      R.drawBoards(true);
+    }
+    // timing ring (user batting)
+    const d = this.del;
+    if (d && d.atHit && this.phase === 'flight' && this.userBatting() && !this.auto && !this.shot) {
+      const left = d.tArrive - d.t, win = .11 * this.diff().win * .92 * .9;
+      R.timingRing(d.atHit.x, HIT_Y, Math.min(1, d.atHit.z), U.clamp(left / Math.max(.3, d.tArrive * .8), 0, 1), Math.abs(left) < win * .45, Math.abs(left) < win);
     }
     R.end();
+    FX.draw();
     this.drawPopups();
   },
   drawPopups() {
