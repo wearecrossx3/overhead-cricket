@@ -1,0 +1,33 @@
+plugins { id 'com.android.application' }
+
+def ksFile = rootProject.file('keystore/overhead.jks')
+
+android {
+    namespace 'studio.frontpage.overhead'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'studio.frontpage.overhead'
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName '0.3.0'
+    }
+    signingConfigs {
+        release {
+            if (ksFile.exists()) {
+                storeFile ksFile
+                storePassword System.getenv('KS_PASS') ?: 'overhead2026'
+                keyAlias 'overhead'
+                keyPassword System.getenv('KS_PASS') ?: 'overhead2026'
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig ksFile.exists() ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+    sourceSets { main { assets.srcDirs = ['../../web'] } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
